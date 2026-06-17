@@ -1,0 +1,369 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#define FILE_BACSI    "bacsi.txt"
+#define FILE_BENHAN  "benhan.txt"
+#define FILE_LICHHEN  "lichhen.txt"
+
+#define MAX_KHUNG_GIO 20
+typedef enum {
+    TIM_MACH,
+    NOI_TONG_QUAT,
+    NHI,
+    DA_LIEU,
+    TAI_MUI_HONG
+} ChuyenKhoa;
+
+typedef enum {
+    CHO_XAC_NHAN,
+    DA_XAC_NHAN,
+    DA_HUY
+} TrangThaiLichHen;
+
+typedef struct BacSi {
+    int id;
+    char ten[50];
+    ChuyenKhoa chuyenKhoa;
+    char khungGio[MAX_KHUNG_GIO][6];
+    int soKhung;
+    struct BacSi *next;
+} BacSi;
+
+
+typedef struct BenhAn {
+    int id;
+    int lankham;
+    int benhNhanId;
+    int bacSiId;
+    char ngay[11];
+    char trieuChung[200];
+    char ketLuan[200];
+    struct BenhAn *next;
+} BenhAn;
+
+typedef struct LichHen {
+    int id;
+    int benhNhanId;
+    int bacSiId;
+    char ngay[11];
+    char gio[6];
+    char trieuChung[200];
+    TrangThaiLichHen trangThai;
+    struct LichHen *next;
+} LichHen;
+
+BacSi    *dsBacSi    = NULL;
+LichHen  *dsLichHen  = NULL;
+int nextBacSiId    = 1;
+int nextLichHenId  = 1;
+BenhAn *dsBenhAn = NULL;
+int nextBenhAnId = 1;
+
+void docDuLieu() {
+    char line[300]; int dongSo;
+
+    /* Doc bacsi.txt */
+    FILE *f=fopen(FILE_BACSI,"r");
+    dongSo=0;
+    if (f) {
+        while (fgets(line,sizeof(line),f)) {
+            dongSo++; line[strcspn(line,"\n")]='\0'; if (!strlen(line)) continue;
+            BacSi *bs=(BacSi*)malloc(sizeof(BacSi)); if (!bs) continue;
+            memset(bs,0,sizeof(BacSi));
+            char gioStr[100]=""; char tmp[300]; strncpy(tmp,line,299);
+            char *tok=strtok(tmp,"|"); if (!tok){free(bs);continue;} bs->id=atoi(tok);
+            tok=strtok(NULL,"|"); if (!tok){free(bs);continue;} strncpy(bs->ten,tok,49);
+            tok=strtok(NULL,"|"); if (!tok){free(bs);continue;} bs->chuyenKhoa=(ChuyenKhoa)atoi(tok);
+            tok=strtok(NULL,"|"); if (!tok){free(bs);continue;} strncpy(gioStr,tok,99);
+            char *g=strtok(gioStr,",");
+            while (g && bs->soKhung<MAX_KHUNG_GIO) { strncpy(bs->khungGio[bs->soKhung++],g,5); g=strtok(NULL,","); }
+            if (bs->id>=nextBacSiId) nextBacSiId=bs->id+1;
+            bs->next=dsBacSi; dsBacSi=bs;
+        }
+        fclose(f);
+    }
+}
+
+BacSi* timBacSiTheoId(int id) {
+    BacSi *bs=dsBacSi;
+    while (bs) { if (bs->id==id) return bs; bs=bs->next; }
+    return NULL;
+}
+
+LichHen* timLichHenTrongFile(int id) {
+    FILE *f = fopen(FILE_LICHHEN, "r");
+    if (!f) return NULL;
+
+    char line[300];
+
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\n")] = '\0';
+        if (!strlen(line)) continue;
+
+        char tmp[300];
+        strncpy(tmp, line, 299);
+
+        LichHen *lh = (LichHen*)malloc(sizeof(LichHen));
+        if (!lh) continue;
+        memset(lh, 0, sizeof(LichHen));
+
+        char *tok = strtok(tmp, "|");
+        if (!tok) { free(lh); continue; }
+        lh->id = atoi(tok);
+
+        if (lh->id != id) {
+            free(lh);
+            continue;
+        }
+
+        tok = strtok(NULL, "|"); lh->benhNhanId = atoi(tok);
+        tok = strtok(NULL, "|"); lh->bacSiId = atoi(tok);
+        tok = strtok(NULL, "|"); strncpy(lh->ngay, tok, 10);
+        tok = strtok(NULL, "|"); strncpy(lh->gio, tok, 5);
+        tok = strtok(NULL, "|"); strncpy(lh->trieuChung, tok, 199);
+        tok = strtok(NULL, "|");
+        
+        fclose(f);
+        return lh;
+    }
+
+    fclose(f);
+    return NULL;
+}
+
+void docChuoi(char *buf, int maxLen) {
+    if (fgets(buf, maxLen, stdin) == NULL) { buf[0]='\0'; return; }
+    int len = strlen(buf);
+    if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
+    else { int c; while ((c=getchar())!='\n' && c!=EOF); }
+}
+
+/* ==================== TẠO BỆNH ÁN ==================== */
+int demSoLanKham(int benhNhanId, ChuyenKhoa khoa) {
+    int dem = 0;
+    BenhAn *ba = dsBenhAn;
+
+    while (ba) {
+        if (ba->benhNhanId == benhNhanId) {
+            BacSi *bs = timBacSiTheoId(ba->bacSiId);
+
+            if (bs && bs->chuyenKhoa == khoa) {
+                dem++;
+            }
+        }
+        ba = ba->next;
+    }
+
+    return dem;
+}
+
+void taoBenhAn() {
+    int maLichHen;
+
+    printf("Nhap ma lich hen: ");
+    scanf("%d", &maLichHen);
+    getchar();
+
+    LichHen *lh = timLichHenTrongFile(maLichHen);
+
+    if (!lh) {
+        printf("Khong tim thay lich hen!\n");
+        return;
+    }
+
+    BenhAn *ba = (BenhAn*)malloc(sizeof(BenhAn));
+    if (!ba) return;
+
+    memset(ba, 0, sizeof(BenhAn));
+
+    ba->id = nextBenhAnId++;
+
+  
+    BacSi *bs = timBacSiTheoId(lh->bacSiId);
+
+    if (bs)
+        ba->lankham = demSoLanKham(lh->benhNhanId, bs->chuyenKhoa) + 1;
+    else
+        ba->lankham = 1;
+
+    ba->benhNhanId = lh->benhNhanId;
+    ba->bacSiId    = lh->bacSiId;
+
+    strcpy(ba->ngay, lh->ngay);
+    strcpy(ba->trieuChung, lh->trieuChung);
+
+    printf("Nhap ket luan: ");
+    docChuoi(ba->ketLuan, sizeof(ba->ketLuan));
+
+    // thêm vào danh sách
+    ba->next = dsBenhAn;
+    dsBenhAn = ba;
+
+    // ghi file
+    FILE *f = fopen(FILE_BENHAN, "a");
+    if (!f) {
+        printf("Khong mo duoc file!\n");
+        free(lh);
+        return;
+    }
+
+    fprintf(f, "%d|%d|%d|%d|%s|%s|%s\n",
+        ba->id,
+        ba->lankham,
+        ba->benhNhanId,
+        ba->bacSiId,
+        ba->ngay,
+        ba->trieuChung,
+        ba->ketLuan
+    );
+
+    fclose(f);
+
+    free(lh);
+
+    printf("Da tao benh an thanh cong!\n");
+}
+
+void baoCao() {
+    char ngayHienTai[11];
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+
+    sprintf(ngayHienTai, "%04d-%02d-%02d",
+            tm.tm_year + 1900,
+            tm.tm_mon + 1,
+            tm.tm_mday);
+
+    FILE *out = fopen("baocao.txt", "w");
+    if (!out) return;
+
+    fprintf(out, "Bao cao ngay: %s\n\n", ngayHienTai);
+
+    // 1. SỐ CUỘC HẸN HÔM NAY
+    FILE *f = fopen(FILE_LICHHEN, "r");
+    if (!f) {
+        fclose(out);
+        return;
+    }
+
+    char line[300];
+    int soLichHen = 0;
+
+    int bsCount[1000] = {0};
+
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\n")] = '\0';
+        if (!strlen(line)) continue;
+
+        char tmp[300];
+        strncpy(tmp, line, 299);
+
+        char *tok = strtok(tmp, "|");
+        int id = atoi(tok);
+
+        tok = strtok(NULL, "|");
+        tok = strtok(NULL, "|");
+        int bacSiId = atoi(tok);
+
+        tok = strtok(NULL, "|");
+
+        if (strcmp(tok, ngayHienTai) == 0) {
+            soLichHen++;
+            bsCount[bacSiId]++;
+        }
+    }
+    fclose(f);
+
+    fprintf(out, "So cuoc hen hom nay: %d\n", soLichHen);
+
+    // 2. BÁC SĨ ĐƯỢC ĐẶT NHIỀU NHẤT
+    int maxCount = 0;
+    int bacSiPhoBien = -1;
+
+    for (int i = 0; i < 1000; i++) {
+        if (bsCount[i] > maxCount) {
+            maxCount = bsCount[i];
+            bacSiPhoBien = i;
+        }
+    }
+
+    fprintf(out, "Bac si duoc dat nhieu nhat: %d (%d lich hen)\n",
+            bacSiPhoBien, maxCount);
+
+// 3. SỐ LƯỢT KHÁM HÔM NAY
+    f = fopen(FILE_BENHAN, "r");
+	if (!f) {
+	    fclose(out);
+	    return;
+    }
+
+    int soLanKham = 0;
+
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\n")] = '\0';
+        if (strlen(line) == 0) continue;
+
+        char tmp[300];
+        strncpy(tmp, line, sizeof(tmp) - 1);
+        tmp[sizeof(tmp) - 1] = '\0';
+
+        char *tok = strtok(tmp, "|");
+        char *ngay = NULL;
+
+        tok = strtok(NULL, "|"); // lankham
+        tok = strtok(NULL, "|"); // benhNhanId
+        tok = strtok(NULL, "|"); // bacSiId
+        tok = strtok(NULL, "|"); // ngay
+        ngay = tok;
+
+
+        if (ngay && strcmp(ngay, ngayHienTai) == 0) {
+            soLanKham++;
+        }
+    }
+
+    fclose(f);
+
+    fprintf(out, "So luot kham hom nay: %d\n", soLanKham);
+    
+    fclose(out);
+}
+
+//===============MAIN==============//
+int main() {
+    int choice;
+
+    do {
+        printf("\n========== MENU ==========\n");
+        printf("1. Tao benh an\n");
+        printf("2. In bao cao\n");
+        printf("0. Thoat\n");
+        printf("==========================\n");
+        printf("Nhap lua chon: ");
+        scanf("%d", &choice);
+        getchar();
+
+        switch (choice) {
+            case 1:
+                taoBenhAn();
+                break;
+
+            case 2:
+                baoCao();
+                printf("Da tao file baocao.txt\n");
+                break;
+
+            case 0:
+                printf("Thoat chuong trinh...\n");
+                break;
+
+            default:
+                printf("Lua chon khong hop le!\n");
+        }
+
+    } while (choice != 0);
+
+    return 0;
+}
