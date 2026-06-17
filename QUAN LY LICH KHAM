@@ -1,0 +1,511 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <time.h>
+
+/* ============================================================
+   QUAN LY LICH KHAM — 1 file duy nhat
+   ============================================================ */
+
+/* ==================== ENUM & STRUCT ==================== */
+
+typedef enum { TIM_MACH=1, NOI_TONG_QUAT, NHI, DA_LIEU, TAI_MUI_HONG } ChuyenKhoa;
+typedef enum { CHO_XAC_NHAN=1, DA_XAC_NHAN, DA_HUY } TrangThaiLichHen;
+
+#define MAX_KHUNG_GIO 20
+
+typedef struct BacSi {
+    int id;
+    char ten[50];
+    ChuyenKhoa chuyenKhoa;
+    char khungGio[MAX_KHUNG_GIO][6];
+    int soKhung;
+    struct BacSi *next;
+} BacSi;
+
+typedef struct BenhNhan {
+    int id;
+    char ten[50];
+    char sdt[15];
+    char ngaySinh[11];
+    struct BenhNhan *next;
+} BenhNhan;
+
+typedef struct LichHen {
+    int id;
+    int benhNhanId;
+    int bacSiId;
+    char ngay[11];
+    char gio[6];
+    char trieuChung[200];
+    TrangThaiLichHen trangThai;
+    struct LichHen *next;
+} LichHen;
+
+
+/* ==================== BIEN TOAN CUC ==================== */
+
+BenhNhan *dsBenhNhan = NULL;
+BacSi    *dsBacSi    = NULL;
+LichHen  *dsLichHen  = NULL;
+int nextBenhNhanId = 1;
+int nextBacSiId    = 1;
+int nextLichHenId  = 1;
+
+#define FILE_BACSI    "bacsi.txt"
+#define FILE_BENHNHAN "benhnhan.txt"
+#define FILE_LICHHEN  "lichhen.txt"
+#define GIOI_HAN_LICH_CHO 5
+
+/* ==================== TIEN ICH ==================== */
+
+const char* tenChuyenKhoa(ChuyenKhoa ck) {
+    switch (ck) {
+        case TIM_MACH:      return "Tim mach";
+        case NOI_TONG_QUAT: return "Noi tong quat";
+        case NHI:           return "Nhi";
+        case DA_LIEU:       return "Da lieu";
+        case TAI_MUI_HONG:  return "Tai Mui Hong";
+        default:            return "Khong xac dinh";
+    }
+}
+
+const char* tenTrangThai(TrangThaiLichHen tt) {
+    switch (tt) {
+        case CHO_XAC_NHAN: return "Cho xac nhan";
+        case DA_XAC_NHAN:  return "Da xac nhan";
+        case DA_HUY:       return "Da huy";
+        default:           return "Khong xac dinh";
+    }
+}
+
+void docChuoi(char *buf, int maxLen) {
+    if (fgets(buf, maxLen, stdin) == NULL) { buf[0]='\0'; return; }
+    int len = strlen(buf);
+    if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
+    else { int c; while ((c=getchar())!='\n' && c!=EOF); }
+}
+
+int docSoNguyen(int min, int max) {
+    char buf[20]; int val;
+    while (1) {
+        docChuoi(buf, sizeof(buf));
+        int ok = 1;
+        for (int i=0; buf[i]; i++) if (!isdigit((unsigned char)buf[i])) { ok=0; break; }
+        if (ok && strlen(buf)>0) { val=atoi(buf); if (val>=min && val<=max) return val; }
+        printf("  Vui long nhap so tu %d den %d: ", min, max);
+    }
+}
+
+/* ==================== VALIDATE ==================== */
+
+int validateSdt(const char *sdt) {
+    if (strlen(sdt)!=10) return 0;
+    for (int i=0;i<10;i++) if (!isdigit((unsigned char)sdt[i])) return 0;
+    return 1;
+}
+
+static int parseNgay(const char *s, int *y, int *m, int *d) {
+    if (strlen(s)!=10 || s[4]!='-' || s[7]!='-') return 0;
+    char yy[5],mm[3],dd[3];
+    strncpy(yy,s,4);yy[4]='\0'; strncpy(mm,s+5,2);mm[2]='\0'; strncpy(dd,s+8,2);dd[2]='\0';
+    for (int i=0;i<4;i++) if (!isdigit((unsigned char)yy[i])) return 0;
+    for (int i=0;i<2;i++) if (!isdigit((unsigned char)mm[i])) return 0;
+    for (int i=0;i<2;i++) if (!isdigit((unsigned char)dd[i])) return 0;
+    *y=atoi(yy); *m=atoi(mm); *d=atoi(dd);
+    if (*m<1||*m>12||*d<1||*d>31) return 0;
+    /* Kiem tra so ngay thuc te theo thang va nam nhuan */
+    int ngayMax[]={0,31,28,31,30,31,30,31,31,30,31,30,31};
+    int laNamNhuan=(*y%4==0 && *y%100!=0) || (*y%400==0);
+    if (laNamNhuan) ngayMax[2]=29;
+    if (*d > ngayMax[*m]) return 0;
+    return 1;
+}
+
+static void ngayHomNay(int *y, int *m, int *d) {
+    time_t t=time(NULL); struct tm *tm=localtime(&t);
+    *y=tm->tm_year+1900; *m=tm->tm_mon+1; *d=tm->tm_mday;
+}
+
+static int soSanhNgay(int y1,int m1,int d1,int y2,int m2,int d2) {
+    if (y1!=y2) return y1<y2?-1:1;
+    if (m1!=m2) return m1<m2?-1:1;
+    if (d1!=d2) return d1<d2?-1:1;
+    return 0;
+}
+
+static int thuTrongTuan(int y, int m, int d) {
+    struct tm t={0}; t.tm_year=y-1900; t.tm_mon=m-1; t.tm_mday=d;
+    mktime(&t); return t.tm_wday;
+}
+
+int validateNgay(const char *ngay) {
+    int y,m,d;
+    if (!parseNgay(ngay,&y,&m,&d)) { printf("  Sai dinh dang, nhap yyyy-mm-dd.\n"); return 0; }
+    int ty,tm,td; ngayHomNay(&ty,&tm,&td);
+    if (soSanhNgay(y,m,d,ty,tm,td)<0) { printf("  Khong duoc chon ngay trong qua khu.\n"); return 0; }
+    if (thuTrongTuan(y,m,d)==0) { printf("  Khong lam viec vao Chu nhat.\n"); return 0; }
+    return 1;
+}
+
+int validateNgaySinh(const char *ns) {
+    int y,m,d;
+    if (!parseNgay(ns,&y,&m,&d)) { printf("  Sai dinh dang, nhap yyyy-mm-dd.\n"); return 0; }
+    int ty,tm,td; ngayHomNay(&ty,&tm,&td);
+    if (soSanhNgay(y,m,d,ty,tm,td)>0) { printf("  Ngay sinh khong duoc lon hon hom nay.\n"); return 0; }
+    return 1;
+}
+
+/* ==================== DOC/GHI FILE ==================== */
+
+void ghiBenhNhan() {
+    FILE *f=fopen(FILE_BENHNHAN,"w"); if (!f) return;
+    BenhNhan *bn=dsBenhNhan;
+    while (bn) { fprintf(f,"%d|%s|%s|%s\n",bn->id,bn->ten,bn->sdt,bn->ngaySinh); bn=bn->next; }
+    fclose(f);
+}
+
+void ghiLichHen() {
+    FILE *f=fopen(FILE_LICHHEN,"w"); if (!f) return;
+    LichHen *lh=dsLichHen;
+    while (lh) { fprintf(f,"%d|%d|%d|%s|%s|%s|%d\n",lh->id,lh->benhNhanId,lh->bacSiId,lh->ngay,lh->gio,lh->trieuChung,(int)lh->trangThai); lh=lh->next; }
+    fclose(f);
+}
+
+void docDuLieu() {
+    char line[300]; int dongSo;
+
+    /* Doc bacsi.txt */
+    FILE *f=fopen(FILE_BACSI,"r");
+    if (f) {
+        dongSo=0;
+        while (fgets(line,sizeof(line),f)) {
+            dongSo++; line[strcspn(line,"\n")]='\0'; if (!strlen(line)) continue;
+            BacSi *bs=(BacSi*)malloc(sizeof(BacSi)); if (!bs) continue;
+            memset(bs,0,sizeof(BacSi));
+            char gioStr[100]=""; char tmp[300]; strncpy(tmp,line,299);
+            char *tok=strtok(tmp,"|"); if (!tok){free(bs);continue;} bs->id=atoi(tok);
+            tok=strtok(NULL,"|"); if (!tok){free(bs);continue;} strncpy(bs->ten,tok,49);
+            tok=strtok(NULL,"|"); if (!tok){free(bs);continue;} bs->chuyenKhoa=(ChuyenKhoa)atoi(tok);
+            tok=strtok(NULL,"|"); if (!tok){free(bs);continue;} strncpy(gioStr,tok,99);
+            char *g=strtok(gioStr,",");
+            while (g && bs->soKhung<MAX_KHUNG_GIO) { strncpy(bs->khungGio[bs->soKhung++],g,5); g=strtok(NULL,","); }
+            if (bs->id>=nextBacSiId) nextBacSiId=bs->id+1;
+            bs->next=dsBacSi; dsBacSi=bs;
+        }
+        fclose(f);
+    }
+
+    /* Doc benhnhan.txt */
+    f=fopen(FILE_BENHNHAN,"r");
+    if (f) {
+        dongSo=0;
+        while (fgets(line,sizeof(line),f)) {
+            dongSo++; line[strcspn(line,"\n")]='\0'; if (!strlen(line)) continue;
+            BenhNhan *bn=(BenhNhan*)malloc(sizeof(BenhNhan)); if (!bn) continue;
+            memset(bn,0,sizeof(BenhNhan));
+            char tmp[300]; strncpy(tmp,line,299);
+            char *tok=strtok(tmp,"|"); if (!tok){free(bn);continue;} bn->id=atoi(tok);
+            tok=strtok(NULL,"|"); if (!tok){free(bn);continue;} strncpy(bn->ten,tok,49);
+            tok=strtok(NULL,"|"); if (!tok){free(bn);continue;} strncpy(bn->sdt,tok,14);
+            tok=strtok(NULL,"|"); if (!tok){free(bn);continue;} strncpy(bn->ngaySinh,tok,10);
+            if (bn->id>=nextBenhNhanId) nextBenhNhanId=bn->id+1;
+            bn->next=dsBenhNhan; dsBenhNhan=bn;
+        }
+        fclose(f);
+    }
+
+    /* Doc lichhen.txt */
+    f=fopen(FILE_LICHHEN,"r");
+    if (f) {
+        dongSo=0;
+        while (fgets(line,sizeof(line),f)) {
+            dongSo++; line[strcspn(line,"\n")]='\0'; if (!strlen(line)) continue;
+            LichHen *lh=(LichHen*)malloc(sizeof(LichHen)); if (!lh) continue;
+            memset(lh,0,sizeof(LichHen));
+            char tmp[300]; strncpy(tmp,line,299);
+            char *tok=strtok(tmp,"|"); if (!tok){free(lh);continue;} lh->id=atoi(tok);
+            tok=strtok(NULL,"|"); if (!tok){free(lh);continue;} lh->benhNhanId=atoi(tok);
+            tok=strtok(NULL,"|"); if (!tok){free(lh);continue;} lh->bacSiId=atoi(tok);
+            tok=strtok(NULL,"|"); if (!tok){free(lh);continue;} strncpy(lh->ngay,tok,10);
+            tok=strtok(NULL,"|"); if (!tok){free(lh);continue;} strncpy(lh->gio,tok,5);
+            tok=strtok(NULL,"|"); if (!tok){free(lh);continue;} strncpy(lh->trieuChung,tok,199);
+            tok=strtok(NULL,"|"); if (!tok){free(lh);continue;} lh->trangThai=(TrangThaiLichHen)atoi(tok);
+            if (lh->id>=nextLichHenId) nextLichHenId=lh->id+1;
+            lh->next=dsLichHen; dsLichHen=lh;
+        }
+        fclose(f);
+    }
+}
+
+/* ==================== BENH NHAN ==================== */
+
+BenhNhan* timBenhNhanTheoSdt(const char *sdt) {
+    BenhNhan *bn=dsBenhNhan;
+    while (bn) { if (strcmp(bn->sdt,sdt)==0) return bn; bn=bn->next; }
+    return NULL;
+}
+
+BenhNhan* timBenhNhanTheoId(int id) {
+    BenhNhan *bn=dsBenhNhan;
+    while (bn) { if (bn->id==id) return bn; bn=bn->next; }
+    return NULL;
+}
+
+int demLichChoBenhNhan(int benhNhanId) {
+    int dem=0; LichHen *lh=dsLichHen;
+    while (lh) { if (lh->benhNhanId==benhNhanId && lh->trangThai==CHO_XAC_NHAN) dem++; lh=lh->next; }
+    return dem;
+}
+
+BenhNhan* layHoacTaoBenhNhan() {
+    char sdt[15]; int thu=0;
+    while (1) {
+        printf("  Nhap SDT benh nhan: "); docChuoi(sdt,sizeof(sdt));
+        if (!validateSdt(sdt)) {
+            printf("  SDT phai gom dung 10 chu so.\n");
+            if (++thu>=3) { printf("  Nhap sai qua nhieu lan.\n"); return NULL; }
+            continue;
+        }
+        BenhNhan *bn=timBenhNhanTheoSdt(sdt);
+        if (bn) { printf("  Da tim thay: %s (ID #%d)\n",bn->ten,bn->id); return bn; }
+
+        printf("  SDT chua co. Tao benh nhan moi.\n");
+        BenhNhan *moi=(BenhNhan*)malloc(sizeof(BenhNhan));
+        if (!moi) return NULL;
+        memset(moi,0,sizeof(BenhNhan));
+        moi->id=nextBenhNhanId++;
+        strncpy(moi->sdt,sdt,14);
+        do { printf("  Ho ten: "); docChuoi(moi->ten,sizeof(moi->ten)); if (!strlen(moi->ten)) printf("  Khong duoc de trong.\n"); } while (!strlen(moi->ten));
+        do { printf("  Ngay sinh (yyyy-mm-dd): "); docChuoi(moi->ngaySinh,sizeof(moi->ngaySinh)); } while (!validateNgaySinh(moi->ngaySinh));
+        moi->next=dsBenhNhan; dsBenhNhan=moi;
+        ghiBenhNhan();
+        printf("  Tao thanh cong! Ma BN: #%d\n",moi->id);
+        return moi;
+    }
+}
+
+void xemLichHenTheoBenhNhan(int benhNhanId) {
+    printf("\n  === LICH HEN CUA BENH NHAN #%d ===\n",benhNhanId);
+    int co=0; LichHen *lh=dsLichHen;
+    while (lh) {
+        if (lh->benhNhanId==benhNhanId) {
+            printf("  #%-3d | %s | %s | BS ID:%d | %s\n",lh->id,lh->ngay,lh->gio,lh->bacSiId,tenTrangThai(lh->trangThai));
+            if (strlen(lh->trieuChung)>0) printf("         Trieu chung: %s\n",lh->trieuChung);
+            co=1;
+        }
+        lh=lh->next;
+    }
+    if (!co) printf("  Chua co lich hen nao.\n");
+}
+
+/* ==================== BAC SI ==================== */
+
+BacSi* timBacSiTheoId(int id) {
+    BacSi *bs=dsBacSi;
+    while (bs) { if (bs->id==id) return bs; bs=bs->next; }
+    return NULL;
+}
+
+int kiemTraTrungLichBacSi(int bacSiId, const char *ngay, const char *gio) {
+    LichHen *lh=dsLichHen;
+    while (lh) {
+        if (lh->bacSiId==bacSiId && strcmp(lh->ngay,ngay)==0 && strcmp(lh->gio,gio)==0 && lh->trangThai!=DA_HUY) return 1;
+        lh=lh->next;
+    }
+    return 0;
+}
+
+int kiemTraTrungLichBenhNhan(int benhNhanId, const char *ngay, const char *gio) {
+    LichHen *lh=dsLichHen;
+    while (lh) {
+        if (lh->benhNhanId==benhNhanId && strcmp(lh->ngay,ngay)==0 && strcmp(lh->gio,gio)==0 && lh->trangThai!=DA_HUY) return 1;
+        lh=lh->next;
+    }
+    return 0;
+}
+
+BacSi* chonBacSiTheoKhoa(ChuyenKhoa khoa) {
+    int dem=0; BacSi *bs=dsBacSi;
+    while (bs) { if (bs->chuyenKhoa==khoa) dem++; bs=bs->next; }
+    if (dem==0) { printf("  Khong co bac si nao trong chuyen khoa nay.\n"); return NULL; }
+
+    printf("\n  === BAC SI CHUYEN KHOA: %s ===\n",tenChuyenKhoa(khoa));
+    int stt=1; bs=dsBacSi;
+    while (bs) { if (bs->chuyenKhoa==khoa) printf("  %d. %s (ID #%d)\n",stt++,bs->ten,bs->id); bs=bs->next; }
+    printf("  Chon bac si (1-%d): ",dem);
+    int chon=docSoNguyen(1,dem);
+    stt=1; bs=dsBacSi;
+    while (bs) { if (bs->chuyenKhoa==khoa) { if (stt==chon) return bs; stt++; } bs=bs->next; }
+    return NULL;
+}
+
+/* ==================== LICH HEN ==================== */
+
+LichHen* timLichHenTheoId(int id) {
+    LichHen *lh=dsLichHen;
+    while (lh) { if (lh->id==id) return lh; lh=lh->next; }
+    return NULL;
+}
+
+static int _dangKy(int benhNhanIdCo) {
+    /* Buoc 1: Benh nhan */
+    BenhNhan *bn=NULL;
+    if (benhNhanIdCo>0) {
+        bn=timBenhNhanTheoId(benhNhanIdCo);
+        if (!bn) { printf("  Loi: Khong tim thay benh nhan.\n"); return -1; }
+        printf("  Benh nhan: %s (ID #%d)\n",bn->ten,bn->id);
+    } else {
+        bn=layHoacTaoBenhNhan(); if (!bn) return -1;
+    }
+
+    /* Buoc 2: Gioi han lich cho */
+    if (demLichChoBenhNhan(bn->id)>=GIOI_HAN_LICH_CHO) {
+        printf("  Ban dang co %d lich cho. Vui long huy bot truoc.\n",GIOI_HAN_LICH_CHO);
+        return -1;
+    }
+
+    /* Buoc 3: Chuyen khoa */
+    printf("\n  Chon chuyen khoa:\n");
+    printf("  1.Tim mach  2.Noi tong quat  3.Nhi  4.Da lieu  5.Tai Mui Hong\n");
+    printf("  Lua chon (1-5): ");
+    ChuyenKhoa khoa=(ChuyenKhoa)docSoNguyen(1,5);
+
+    /* Buoc 4: Bac si */
+    BacSi *bs=chonBacSiTheoKhoa(khoa); if (!bs) return -1;
+
+    /* Buoc 5: Ngay kham */
+    char ngay[11]; int thu=0;
+    do {
+        if (thu>=3) { printf("  Nhap sai qua nhieu lan.\n"); return -1; }
+        printf("  Ngay kham (yyyy-mm-dd): "); docChuoi(ngay,sizeof(ngay)); thu++;
+    } while (!validateNgay(ngay));
+
+    /* Buoc 6: Chon gio trong */
+    char gioTrong[MAX_KHUNG_GIO][6]; int soTrong=0;
+    for (int i=0;i<bs->soKhung;i++)
+        if (!kiemTraTrungLichBacSi(bs->id,ngay,bs->khungGio[i]))
+            strncpy(gioTrong[soTrong++],bs->khungGio[i],5);
+    if (soTrong==0) { printf("  Het gio trong ngay nay. Vui long chon ngay khac.\n"); return -1; }
+    printf("\n  Gio trong cua BS %s ngay %s:\n",bs->ten,ngay);
+    for (int i=0;i<soTrong;i++) printf("  %d. %s\n",i+1,gioTrong[i]);
+    printf("  Chon gio (1-%d): ",soTrong);
+    char *gio=gioTrong[docSoNguyen(1,soTrong)-1];
+
+    /* Buoc 7: Kiem tra trung lich benh nhan */
+    if (kiemTraTrungLichBenhNhan(bn->id,ngay,gio)) {
+        printf("  Ban da co lich kham vao %s %s. Khong the co mat 2 noi cung luc.\n",ngay,gio);
+        return -1;
+    }
+
+    /* Buoc 8: Trieu chung */
+    char trieuChung[200]="";
+    printf("  Trieu chung (Enter de bo qua): "); docChuoi(trieuChung,sizeof(trieuChung));
+
+    /* Buoc 9: Xac nhan */
+    printf("\n  === XAC NHAN ===\n");
+    printf("  Benh nhan : %s | SDT: %s\n",bn->ten,bn->sdt);
+    printf("  Bac si    : %s (%s)\n",bs->ten,tenChuyenKhoa(bs->chuyenKhoa));
+    printf("  Ngay / Gio: %s | %s\n",ngay,gio);
+    printf("  Trieu chung: %s\n",strlen(trieuChung)?trieuChung:"(khong co)");
+    printf("  [1] Xac nhan  [2] Nhap lai  [3] Huy\n  Lua chon: ");
+    int xn=docSoNguyen(1,3);
+    if (xn==3) { printf("  Da huy.\n"); return -1; }
+    if (xn==2) return _dangKy(benhNhanIdCo);
+
+    /* Buoc 10: Luu */
+    LichHen *lh=(LichHen*)malloc(sizeof(LichHen));
+    if (!lh) { printf("  Loi bo nho.\n"); return -1; }
+    memset(lh,0,sizeof(LichHen));
+    lh->id=nextLichHenId++; lh->benhNhanId=bn->id; lh->bacSiId=bs->id;
+    lh->trangThai=CHO_XAC_NHAN;
+    strncpy(lh->ngay,ngay,10); strncpy(lh->gio,gio,5); strncpy(lh->trieuChung,trieuChung,199);
+    lh->next=dsLichHen; dsLichHen=lh;
+    ghiLichHen();
+    printf("\n  Dat lich thanh cong! Ma lich hen: #%d\n",lh->id);
+    return lh->id;
+}
+
+void dangKyLichHen() {
+    printf("\n====== DANG KY LICH HEN ======\n");
+    int id=_dangKy(-1);
+    if (id>0) {
+        printf("  [1] Xem lich cua toi  [2] Quay menu\n  Lua chon: ");
+        if (docSoNguyen(1,2)==1) {
+            LichHen *lh=timLichHenTheoId(id);
+            if (lh) xemLichHenTheoBenhNhan(lh->benhNhanId);
+        }
+    }
+}
+
+void huyLichHen() {
+    printf("\n====== HUY LICH HEN ======\n");
+    printf("  Nhap ma lich hen: "); int id=docSoNguyen(1,999999);
+    LichHen *lh=timLichHenTheoId(id);
+    if (!lh) { printf("  Khong tim thay lich hen #%d.\n",id); return; }
+    if (lh->trangThai==DA_HUY) { printf("  Lich nay da bi huy truoc do.\n"); return; }
+    printf("  Lich #%d: %s | %s | BS ID:%d | %s\n",lh->id,lh->ngay,lh->gio,lh->bacSiId,tenTrangThai(lh->trangThai));
+    printf("  Xac nhan huy? (1=Co / 2=Khong): ");
+    if (docSoNguyen(1,2)==1) { lh->trangThai=DA_HUY; ghiLichHen(); printf("  Lich hen #%d da huy.\n",id); }
+    else printf("  Da huy thao tac.\n");
+}
+
+void doiLichHen() {
+    printf("\n====== DOI LICH HEN ======\n");
+    printf("  Nhap ma lich hen muon doi: "); int idCu=docSoNguyen(1,999999);
+    LichHen *lichCu=timLichHenTheoId(idCu);
+    if (!lichCu) { printf("  Khong tim thay.\n"); return; }
+    if (lichCu->trangThai==DA_HUY) { printf("  Lich nay da bi huy.\n"); return; }
+    printf("  Lich cu: %s | %s | BS ID:%d\n",lichCu->ngay,lichCu->gio,lichCu->bacSiId);
+    printf("  Chon lich moi:\n");
+    /* Dat moi truoc, huy cu sau (an toan) */
+    int idMoi=_dangKy(lichCu->benhNhanId);
+    if (idMoi<0) { printf("  Dat moi that bai. Lich cu #%d van con hieu luc.\n",idCu); return; }
+    lichCu->trangThai=DA_HUY; ghiLichHen();
+    printf("  Doi lich thanh cong! Lich moi: #%d | Lich cu #%d da huy.\n",idMoi,idCu);
+}
+
+
+/* ==================== MENU CHINH ==================== */
+
+int main() {
+    docDuLieu();
+    printf("He thong quan ly lich kham da san sang.\n");
+    int chon;
+    do {
+        printf("\n╔══════════════════════════════════╗\n");
+        printf("║   QUAN LY LICH KHAM - MENU       ║\n");
+        printf("╠══════════════════════════════════╣\n");
+        printf("║  1. Dang ky lich hen              ║\n");
+        printf("║  2. Huy lich hen                  ║\n");
+        printf("║  3. Doi lich hen                  ║\n");
+        printf("║  4. Xem lich hen cua toi          ║\n");
+        printf("║  0. Thoat                         ║\n");
+        printf("╚══════════════════════════════════╝\n");
+        printf("  Lua chon: ");
+        chon=docSoNguyen(0,4);
+        switch(chon) {
+            case 1: dangKyLichHen(); break;
+            case 2: huyLichHen();    break;
+            case 3: doiLichHen();    break;
+            case 4: {
+                char sdt4[15];
+                printf("  Nhap SDT benh nhan: ");
+                docChuoi(sdt4, sizeof(sdt4));
+                BenhNhan *bn4=timBenhNhanTheoSdt(sdt4);
+                if (!bn4) printf("  Khong tim thay benh nhan voi SDT nay.\n");
+                else xemLichHenTheoBenhNhan(bn4->id);
+                break;
+            }
+            case 0: printf("  Tam biet!\n"); break;
+        }
+    } while (chon!=0);
+
+    /* Giai phong bo nho truoc khi thoat */
+    { BenhNhan *cur=dsBenhNhan,*nxt; while(cur){nxt=cur->next;free(cur);cur=nxt;} }
+    { BacSi    *cur=dsBacSi,   *nxt; while(cur){nxt=cur->next;free(cur);cur=nxt;} }
+    { LichHen  *cur=dsLichHen, *nxt; while(cur){nxt=cur->next;free(cur);cur=nxt;} }
+    printf("  Da giai phong bo nho.\n");
+    return 0;
+}
