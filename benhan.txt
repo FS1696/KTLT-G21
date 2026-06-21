@@ -1,1 +1,2 @@
-1|1|1|4004|2026-06-17|ngua , viem da|Di ung thoi tiet
+1|1|1|4004|2026-06-22|Ngua, do da, noi me day|Viem da di ung
+2|2|1|4003|2026-07-15|Van bi noi me day va ngua|Di ung thoi tiet
