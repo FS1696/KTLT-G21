@@ -383,10 +383,16 @@ static int _dangKy(int benhNhanIdCo) {
     } while (!validateNgay(ngay));
 
     /* Buoc 6: Chon gio trong */
-    char gioTrong[MAX_KHUNG_GIO][6]; int soTrong=0;
-    for (int i=0;i<bs->soKhung;i++)
-        if (!kiemTraTrungLichBacSi(bs->id,ngay,bs->khungGio[i]))
-            strncpy(gioTrong[soTrong++],bs->khungGio[i],5);
+    char gioTrong[MAX_KHUNG_GIO][6];
+    int soTrong = 0;
+
+    for (int i = 0; i < bs->soKhung; i++){
+        if (!kiemTraTrungLichBacSi(bs->id, ngay, bs->khungGio[i])){
+            strncpy(gioTrong[soTrong], bs->khungGio[i], 5);
+            gioTrong[soTrong][5] = '\0';
+            soTrong++;
+        }
+    }
     if (soTrong==0) { printf("  Het gio trong ngay nay. Vui long chon ngay khac.\n"); return -1; }
     printf("\n  Gio trong cua BS %s ngay %s:\n",bs->ten,ngay);
     for (int i=0;i<soTrong;i++) printf("  %d. %s\n",i+1,gioTrong[i]);
@@ -474,15 +480,15 @@ int main() {
     printf("He thong quan ly lich kham da san sang.\n");
     int chon;
     do {
-        printf("\n╔══════════════════════════════════╗\n");
-        printf("║   QUAN LY LICH KHAM - MENU       ║\n");
-        printf("╠══════════════════════════════════╣\n");
-        printf("║  1. Dang ky lich hen              ║\n");
-        printf("║  2. Huy lich hen                  ║\n");
-        printf("║  3. Doi lich hen                  ║\n");
-        printf("║  4. Xem lich hen cua toi          ║\n");
-        printf("║  0. Thoat                         ║\n");
-        printf("╚══════════════════════════════════╝\n");
+        printf("==================================\n");
+        printf("   QUAN LY LICH KHAM - MENU       \n");
+        printf("==================================\n");
+        printf("  1. Dang ky lich hen              \n");
+        printf("  2. Huy lich hen                  \n");
+        printf("  3. Doi lich hen                  \n");
+        printf("  4. Xem lich hen cua toi          \n");
+        printf("  0. Thoat                         \n");
+        printf("==================================\n");
         printf("  Lua chon: ");
         chon=docSoNguyen(0,4);
         switch(chon) {
