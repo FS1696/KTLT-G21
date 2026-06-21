@@ -86,6 +86,49 @@ void docDuLieu() {
     }
 }
 
+void docBenhAn() {
+    FILE *f = fopen(FILE_BENHAN, "r");
+    if (!f) return;
+
+    char line[500];
+
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\n")] = '\0';
+
+        BenhAn *ba = (BenhAn*)malloc(sizeof(BenhAn));
+        memset(ba, 0, sizeof(BenhAn));
+
+        char *tok = strtok(line, "|");
+        ba->id = atoi(tok);
+
+        tok = strtok(NULL, "|");
+        ba->lankham = atoi(tok);
+
+        tok = strtok(NULL, "|");
+        ba->benhNhanId = atoi(tok);
+
+        tok = strtok(NULL, "|");
+        ba->bacSiId = atoi(tok);
+
+        tok = strtok(NULL, "|");
+        strcpy(ba->ngay, tok);
+
+        tok = strtok(NULL, "|");
+        strcpy(ba->trieuChung, tok);
+
+        tok = strtok(NULL, "|");
+        strcpy(ba->ketLuan, tok);
+
+        if (ba->id >= nextBenhAnId)
+            nextBenhAnId = ba->id + 1;
+
+        ba->next = dsBenhAn;
+        dsBenhAn = ba;
+    }
+
+    fclose(f);
+}
+
 BacSi* timBacSiTheoId(int id) {
     BacSi *bs=dsBacSi;
     while (bs) { if (bs->id==id) return bs; bs=bs->next; }
@@ -103,7 +146,8 @@ LichHen* timLichHenTrongFile(int id) {
         if (!strlen(line)) continue;
 
         char tmp[300];
-        strncpy(tmp, line, 299);
+        strncpy(tmp, line, sizeof(tmp) - 1);
+        tmp[sizeof(tmp) - 1] = '\0';
 
         LichHen *lh = (LichHen*)malloc(sizeof(LichHen));
         if (!lh) continue;
@@ -159,7 +203,7 @@ int demSoLanKham(int benhNhanId, ChuyenKhoa khoa) {
     return dem;
 }
 
-void taoBenhAn() {
+void taoBenhAn() {	
     int maLichHen;
 
     printf("Nhap ma lich hen: ");
@@ -258,7 +302,8 @@ void baoCao() {
         if (!strlen(line)) continue;
 
         char tmp[300];
-        strncpy(tmp, line, 299);
+        strncpy(tmp, line, sizeof(tmp) - 1);
+        tmp[sizeof(tmp) - 1] = '\0';
 
         char *tok = strtok(tmp, "|");
         int id = atoi(tok);
@@ -288,7 +333,7 @@ void baoCao() {
             bacSiPhoBien = i;
         }
     }
-
+    
     fprintf(out, "Bac si duoc dat nhieu nhat: %d (%d lich hen)\n",
             bacSiPhoBien, maxCount);
 
@@ -333,8 +378,9 @@ void baoCao() {
 
 //===============MAIN==============//
 int main() {
+	docBenhAn();
+	docDuLieu();
     int choice;
-
     do {
         printf("\n========== MENU ==========\n");
         printf("1. Tao benh an\n");
@@ -367,3 +413,5 @@ int main() {
 
     return 0;
 }
+    
+    
