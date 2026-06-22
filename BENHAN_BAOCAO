@@ -306,17 +306,24 @@ void baoCao() {
         tmp[sizeof(tmp) - 1] = '\0';
 
         char *tok = strtok(tmp, "|");
-        int id = atoi(tok);
+        if (!tok) continue;
 
         tok = strtok(NULL, "|");
+        if (!tok) continue;
+
         tok = strtok(NULL, "|");
+        if (!tok) continue;
+
         int bacSiId = atoi(tok);
 
         tok = strtok(NULL, "|");
+        if (!tok) continue;
 
-        if (strcmp(tok, ngayHienTai) == 0) {
+        if (strcmp(tok, ngayHienTai) == 0)
+        {
             soLichHen++;
-            bsCount[bacSiId]++;
+            if (bacSiId >= 0 && bacSiId < 1000)
+                bsCount[bacSiId]++;
         }
     }
     fclose(f);
